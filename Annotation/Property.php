@@ -13,7 +13,7 @@ namespace ONGR\ElasticsearchBundle\Annotation;
 
 /**
  * @Annotation
- * @Target("PROPERTY")
+ * @Target({"METHOD","PROPERTY"})
  */
 final class Property extends AbstractAnnotation implements PropertiesAwareInterface
 {

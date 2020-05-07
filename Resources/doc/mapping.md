@@ -404,6 +404,30 @@ nested objects stored separately. This introduces differences when querying and 
 
 More information about nested documents if [here](https://www.elastic.co/guide/en/elasticsearch/reference/current/nested.html)
 
+### Methods as properties
+You can use the annotations `@ES\Property` and `@ES\Embedded` with both properties and methods.
+If you use it with a method, the value will be saved in elastic search. Thus it can be used to query for these
+values. However, since we assume that there is no setter that belongs to the method, no setter is called, when
+you retrieve the document from elastic search.
+
+```php
+    /**
+     * The name is `has_description` by default.
+     * @ES\Property(type="boolean")
+     */
+    public function hasDescription() {
+        return !empty($this->description);
+    }
+
+    /**
+     * The name is `some_object` by default.
+     * @ES\Embedded(class="App\Document\SomeObject")
+     */
+    public function getSomeObject() {
+        return new SomeObject();
+    }
+```
+
 ### Multi field annotations and usage
 
 Within the properties annotation, you can specify the `fields` attribute. It enables you to map several core
