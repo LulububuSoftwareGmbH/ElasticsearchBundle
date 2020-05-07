@@ -39,5 +39,39 @@ class PropertyTest extends AbstractElasticsearchTestCase
             ],
             $meta['mappings']['properties']['title']
         );
+
+        $this->assertEquals(
+            [
+                'properties' =>
+                    [
+                        'title' => [
+                            'type' => 'keyword',
+                        ],
+                    ],
+                'type'       => 'object',
+            ],
+            $meta['mappings']['properties']['first_object']
+        );
+
+        $this->assertEquals(
+            [
+                'type'       => 'boolean',
+            ],
+            $meta['mappings']['properties']['has_id']
+        );
+
+        $this->assertEquals(
+            [
+                'type'       => 'boolean',
+            ],
+            $meta['mappings']['properties']['is_great']
+        );
+
+        $this->assertEquals(
+            [
+                'type'       => 'date',
+            ],
+            $meta['mappings']['properties']['datetimefield']
+        );
     }
 }
