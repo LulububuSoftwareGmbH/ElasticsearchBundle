@@ -28,6 +28,9 @@ use ONGR\ElasticsearchBundle\Annotation\Property;
  */
 class DocumentParser
 {
+    const OBJ_CACHED_FIELDS = 'ongr.obj_fields';
+    const EMBEDDED_CACHED_FIELDS = 'ongr.embedded_fields';
+    const ARRAY_CACHED_FIELDS = 'ongr.array_fields';
 
     private $reader;
     private $properties = [];
