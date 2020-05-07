@@ -57,10 +57,14 @@ class Converter
             if ($fieldMeta['embeded']) {
                 if (is_iterable($value)) {
                     foreach ($value as $item) {
-                        $result[$field][] = $this->normalize($item, $fieldMeta['sub_properties']);
+                        if ($item) {
+                            $result[$field][] = $this->normalize($item, $fieldMeta['sub_properties']);
+                        }
                     }
                 } else {
-                    $result[$field] = $this->normalize($value, $fieldMeta['sub_properties']);
+                    if ($value) {
+                        $result[$field] = $this->normalize($value, $fieldMeta['sub_properties']);
+                    }
                 }
             } else {
                 if ($value instanceof \DateTime) {
@@ -106,7 +110,9 @@ class Converter
                         $setter = \Closure::bind($setter, $object, $object);
                         $setter($fieldMeta['name'], $value);
                     } else {
-                        $object->$setter($value);
+                        if ($setter) {
+                            $object->$setter($value);
+                        }
                     }
                 }
             }

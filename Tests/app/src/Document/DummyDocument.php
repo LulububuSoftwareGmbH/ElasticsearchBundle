@@ -122,4 +122,44 @@ class DummyDocument
         $this->datetimefield = $datetimefield;
     }
 
+    /**
+     * @return mixed
+     */
+    public function getTitle()
+    {
+        return $this->title;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getNumber()
+    {
+        return $this->number;
+    }
+
+    /**
+     * @ES\Property(type="boolean")
+     */
+    public function hasId(): bool
+    {
+        return $this->id !== null;
+    }
+
+    /**
+     * @ES\Property(type="boolean")
+     */
+    public function isGreat(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @ES\Embedded(class="ONGR\App\Document\CollectionObject")
+     */
+    public function getFirstObject(): ?object
+    {
+        $first = $this->objectCollection->first();
+        return $first ? $first : null;
+    }
 }
