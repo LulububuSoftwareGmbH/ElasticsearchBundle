@@ -22,19 +22,16 @@ use ONGR\ElasticsearchBundle\Annotation\NestedType;
 use ONGR\ElasticsearchBundle\Annotation\ObjectType;
 use ONGR\ElasticsearchBundle\Annotation\PropertiesAwareInterface;
 use ONGR\ElasticsearchBundle\Annotation\Property;
-use ONGR\ElasticsearchBundle\DependencyInjection\Configuration;
 
 /**
  * Document parser used for reading document annotations.
  */
 class DocumentParser
 {
-    const OBJ_CACHED_FIELDS = 'ongr.obj_fields';
-    const EMBEDDED_CACHED_FIELDS = 'ongr.embedded_fields';
-    const ARRAY_CACHED_FIELDS = 'ongr.array_fields';
 
     private $reader;
     private $properties = [];
+    private $methods = [];
     private $analysisConfig = [];
     private $cache;
 
@@ -106,6 +103,7 @@ class DocumentParser
         /** @var \ReflectionProperty $property */
         foreach ($this->getDocumentPropertiesReflection($class) as $name => $property) {
             $annotations = $this->reader->getPropertyAnnotations($property);
+            $this->getPropertyMapping($annotations, $embeddedFields, $name, $mapping, $objFields, $arrayFields);
 
             /** @var AbstractAnnotation $annotation */
             foreach ($annotations as $annotation) {
@@ -136,6 +134,13 @@ class DocumentParser
                 $mapping[$annotation->getName() ?? Caser::snake($name)] = array_filter($fieldMapping);
                 $objFields[$name] = $annotation->getName() ?? Caser::snake($name);
                 $arrayFields[$annotation->getName() ?? Caser::snake($name)] = $name;
+            }
+
+            /** @var \ReflectionMethod $method */
+            foreach ($this->getDocumentMethodsReflection($class) as $name => $method) {
+                $name = $this->guessPropertyNameFromGetter($name);
+                $annotations = $this->reader->getMethodAnnotations($method);
+                $this->getPropertyMapping($annotations, $embeddedFields, $name, $mapping, $objFields, $arrayFields);
             }
         }
 
@@ -219,6 +224,52 @@ class DocumentParser
             }
         }
 
+        /** @var \ReflectionProperty $property */
+        foreach ($this->getDocumentMethodsReflection($class) as $name => $method) {
+            /** @var AbstractAnnotation $annotation */
+            foreach ($this->reader->getMethodAnnotations($method) as $annotation) {
+                if (!$annotation instanceof PropertiesAwareInterface) {
+                    continue;
+                }
+
+                $guessedName = $this->guessPropertyNameFromGetter($name);
+                $fieldName = $annotation->getName() ?? Caser::snake($guessedName);
+
+                $propertyMetadata = [
+                    'identifier' => false,
+                    'class' => null,
+                    'embeded' => false,
+                    'type' => null,
+                    'public' => false,
+                    'getter' => $name,
+                    'setter' => null,
+                    'sub_properties' => [],
+                    'name' => $annotation->getName() ?? $guessedName
+                ];
+
+                if ($annotation instanceof Id) {
+                    $propertyMetadata['identifier'] = true;
+                }
+
+                if ($annotation instanceof Property) {
+                    // we need the type (and possibly settings?) in Converter::denormalize()
+                    $propertyMetadata['type'] = $annotation->type;
+                    $propertyMetadata['settings'] = $annotation->settings;
+                }
+
+                if ($annotation instanceof Embedded) {
+                    $propertyMetadata['embeded'] = true;
+                    $propertyMetadata['class'] = $annotation->class;
+                    $propertyMetadata['sub_properties'] = $this->getPropertyMetadata(
+                        new \ReflectionClass($annotation->class),
+                        true
+                    );
+                }
+
+                $metadata[$fieldName] = $propertyMetadata;
+            }
+        }
+
         return $metadata;
     }
 
@@ -284,6 +335,15 @@ class DocumentParser
         }
 
         throw new \Exception("Could not determine a getter for `$name` of class `{$class->getNamespaceName()}`");
+    }
+
+    protected function guessPropertyNameFromGetter($name): string
+    {
+        if (preg_match('/^get([A-Z_0-9].*?)$/', $name, $matches)) {
+            return lcfirst($matches[1]);
+        }
+
+        return $name;
     }
 
     protected function guessSetter(\ReflectionClass $class, $name): string
@@ -358,6 +418,13 @@ class DocumentParser
             }
         }
 
+        foreach ($class->getMethods() as $method) {
+
+            if (!in_array($property->getName(), $properties)) {
+                $properties[$property->getName()] = $property;
+            }
+        }
+
         $parentReflection = $class->getParentClass();
         if ($parentReflection !== false) {
             $properties = array_merge(
@@ -369,5 +436,75 @@ class DocumentParser
         $this->properties[$class->getName()] = $properties;
 
         return $properties;
+    }
+
+    private function getDocumentMethodsReflection(\ReflectionClass $class): array
+    {
+        if (in_array($class->getName(), $this->methods)) {
+            return $this->methods[$class->getName()];
+        }
+
+        $methods = [];
+
+        foreach ($class->getMethods() as $method) {
+            if (!in_array($method->getName(), $methods)) {
+                $methods[$method->getName()] = $method;
+            }
+        }
+
+        $parentReflection = $class->getParentClass();
+        if ($parentReflection !== false) {
+            $methods = array_merge(
+                $methods,
+                array_diff_key($this->getDocumentMethodsReflection($parentReflection), $methods)
+            );
+        }
+
+        $this->methods[$class->getName()] = $methods;
+
+        return $methods;
+    }
+
+    /**
+     * @param array $annotations
+     * @param $embeddedFields
+     * @param string $name
+     * @param array $mapping
+     * @param array $objFields
+     * @param array $arrayFields
+     * @throws \ReflectionException
+     */
+    private function getPropertyMapping(array $annotations, &$embeddedFields, string $name, array &$mapping, ?array &$objFields, ?array &$arrayFields): void
+    {
+        /** @var AbstractAnnotation $annotation */
+        foreach ($annotations as $annotation) {
+            if (!$annotation instanceof PropertiesAwareInterface) {
+                continue;
+            }
+
+            $fieldMapping = $annotation->getSettings();
+
+            if ($annotation instanceof Property) {
+                $fieldMapping['type'] = $annotation->type;
+                if ($annotation->fields) {
+                    $fieldMapping['fields'] = $annotation->fields;
+                }
+                $fieldMapping['analyzer']              = $annotation->analyzer;
+                $fieldMapping['search_analyzer']       = $annotation->searchAnalyzer;
+                $fieldMapping['search_quote_analyzer'] = $annotation->searchQuoteAnalyzer;
+            }
+
+            if ($annotation instanceof Embedded) {
+                $embeddedClass              = new \ReflectionClass($annotation->class);
+                $fieldMapping['type']       = $this->getObjectMappingType($embeddedClass);
+                $fieldMapping['properties'] = $this->getClassMetadata($embeddedClass);
+                $embeddedFields[$name]      = $annotation->class;
+            }
+
+            $fieldName               = $annotation->getName() ?? Caser::snake($name);
+            $mapping[$fieldName]     = array_filter($fieldMapping);
+            $objFields[$name]        = $fieldName;
+            $arrayFields[$fieldName] = $name;
+        }
     }
 }
